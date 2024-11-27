@@ -25,8 +25,20 @@ def upload_file():
         return "Nenhum arquivo selecionado", 400
 
     try:
-        # Lê o arquivo Excel enviado
-        tabela = pd.read_excel(file)
+        
+        # Determinar o tipo de arquivo e processá-lo corretamente
+        file_extension = os.path.splitext(file.filename)[1].lower()  # Obtém a extensão do arquivo
+
+        if file_extension == ".xlsx":
+            tabela = pd.read_excel(file)
+        elif file_extension == ".csv":
+            try:
+                tabela = pd.read_csv(file, encoding="utf-8")  # Tenta carregar como UTF-8
+            except UnicodeDecodeError:
+                tabela = pd.read_csv(file, encoding="latin1")  # Fallback para latin1
+        else:
+            return "Formato de arquivo não suportado. Envie um arquivo .xlsx ou .csv", 400
+
 
         # Data atual para nomear o arquivo
         hoje = datetime.today().strftime("%d-%m-%Y")
@@ -44,14 +56,19 @@ def upload_file():
             # Calcular Valor Recebido, VAlor total, valor recebido e valor atrasado
             recebido = subset["Valor Pagamento"].sum()
             valorTotalPrincipal = subset["Valor Parcela Inicial"].sum()
-            receber = subset.loc[(subset["DataVencimento"] > datetime.today())& (subset["Valor Pagamento"].isna()), "Valor Total"].sum()
+            receber = subset.loc[(subset["DataVencimento"] > datetime.today())& (subset["Valor Pagamento"].isna() | subset["Valor Pagamento"]==0), "Valor Total"].sum()
             atrasado = subset.loc[
-                (subset["DataVencimento"] < datetime.today()) & (subset["Valor Pagamento"].isna()), 
+                (subset["DataVencimento"] < datetime.today()) & (subset["Valor Pagamento"].isna() | subset["Valor Pagamento"]==0), 
                 "Valor Total"
             ].sum()
 
             # Encontrar a última data de pagamento
-            ultimo_pagamento = subset.loc[subset["Valor Pagamento"].notna(), "MesAnoRef"].max()
+            ultimo_pagamento = subset.loc[(subset["Valor Pagamento"].notna()) & (subset["Valor Pagamento"] > 0), "MesAnoRef"].max()
+            if pd.notna(ultimo_pagamento):
+                ultimo_pagamento = pd.to_datetime(ultimo_pagamento).strftime("%d/%m/%Y")
+            else:
+                ultimo_pagamento = None  # Deixa a célula vazia no relatório
+
 
             # Verificar se há uma data de cancelamento
             data_cancelamento = subset.iloc[0]["Data Cancelamento"] if "Data Cancelamento" in subset.columns else None
